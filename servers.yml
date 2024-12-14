@@ -1,9 +1,93 @@
 Parameters:
-  # Paramenters are entirely optional.
-  # but using them will make your cloudformation templates more reusable
-  # use them for things that may change over time, such as instance type,
-  # VPCs and so on.
+
+  ProjectName:
+    Description: The name of the project
+    Type: String
+
+  AutoScalingGroupDesiredCapacity:
+    Description: The desired capacity for the Auto Scaling Group
+    Type: String
+    Default: '4'
+
 Resources:
+
+  Bastion:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      KeyName: MyKeyPair
+      ImageId: ami-0557a15b87f6559cf
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      SubnetId:
+        Fn::ImportValue: !Sub '${ProjectName}-PublicSubnet1'
+      Tags:
+        - Key: Name
+          Value: "Bastion Host"
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH access from anywhere
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Web Server Access
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        SecurityGroupIds:
+          - !Ref WebServerSecurityGroup
+        ImageId: ami-0557a15b87f6559cf
+        SecurityGroupIds:
+          - !Ref WebServerSecurityGroup
+        KeyName: MyKeyPair
+        InstanceType: t2.micro
+        BlockDeviceMappings:
+          - DeviceName: /dev/sdk
+            Ebs:
+              VolumeSize: 10
+        UserData:
+          "Fn::Base64":
+            !Sub |
+              #!/bin/bash
+              apt-get update -y
+              apt-get install apache2 -y
+              systemctl start apache2.service
+              cd /var/www/html
+              echo "Udacity Demo Web Server Up and Running!" > index.html
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub '${ProjectName}-PublicSubnet1'
+      DesiredCapacity: !Ref AutoScalingGroupDesiredCapacity
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      MaxSize: 6
+      MinSize: 1
+
+
+  # This is an Instance Profile that we can associate to our EC2 Servers
   # instace profile contains the IAM Role name(s) that we want to associate to our auto scaling EC2 Servers
   # never give too much permissions to your EC2 instances! if they get hacked, the permissions get hacked also!
   # in this example, I create a Role called UdacityS3ReadOnlyC2 and just give it a policy of S3 Read-Only Access

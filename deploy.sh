@@ -6,6 +6,6 @@
 aws cloudformation deploy \
 --stack-name $1 \
 --template-file $2 \
---capabilities CAPABILITIES_NAMED_IAM \
+--capabilities CAPABILITY_NAMED_IAM \
 --parameter-overrides file://$3 \
 --region us-east-1
